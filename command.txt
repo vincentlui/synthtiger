@@ -1,0 +1,2 @@
+synthtiger -o results -w 4 -v examples/synthwhole/template.py SynthWhole examples/synthwhole/config.yaml --count 3000 --output results/4
+synthtiger -o results -w 4 -v examples/synthwhole/template.py SynthWhole examples/synthwhole/config_vert.yaml --count 3000 --output results/5

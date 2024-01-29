@@ -62,7 +62,8 @@ class BaseTexture(Component):
         return meta
 
     def apply(self, layers, meta=None):
-        meta = self.sample(meta)
+        if meta is None:
+            meta = self.sample(meta)
         texture = self.data(meta)
 
         for layer in layers:
@@ -119,3 +120,21 @@ class BaseTexture(Component):
         idx = np.random.randint(len(self._paths[key]))
         path = self._paths[key][idx]
         return path
+
+
+
+class BaseTextureWhole(BaseTexture):
+    def __init__(self, paths=(), weights=(), alpha=(1, 1), grayscale=0, crop=0):
+        super(BaseTexture).__init__(paths,weights,alpha,grayscale,crop)
+
+    def apply(self, layers, meta=None):
+        if meta is None:
+            meta = self.sample(meta)
+        texture = self.data(meta)
+
+        for layer in layers:
+            height, width = layer.image.shape[:2]
+            # image = utils.resize_image(texture, (width, height))
+            layer.image = utils.blend_image(texture, layer.image, mask=True)
+
+        return meta
