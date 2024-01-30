@@ -18,13 +18,13 @@ BLEND_MODES = [
     "screen",
     "overlay",
     "hard_light",
-    "soft_light",
-    "dodge",
-    "divide",
-    "addition",
-    "difference",
+    # "soft_light",
+    # "dodge",
+    # "divide",
+    # "addition",
+    # "difference",
     "darken_only",
-    "lighten_only",
+    # "lighten_only",
 ]
 
 
@@ -49,7 +49,12 @@ class SynthWhole(templates.Template):
         self.corpus = components.Selector(
             [
                 components.LengthAugmentableCorpus(),
-                components.CharAugmentableCorpus(),
+                # components.CharAugmentableCorpus(),
+                components.LengthAugmentableCorpus(),
+                components.LengthAugmentableCorpus(),
+                components.LengthAugmentableCorpus(),
+                components.LengthAugmentableCorpus(),
+                components.LengthAugmentableCorpus(),
             ],
             **config.get("corpus", {}),
         )
@@ -60,6 +65,11 @@ class SynthWhole(templates.Template):
         self.colormap2 = components.GrayMap(**config.get("colormap2", {}))
         self.colormap3 = components.GrayMap(**config.get("colormap3", {}))
         self.color = components.Gray(**config.get("color", {}))
+        self.background_color = components.RGB(**config.get("background_color", {}))
+        
+        self.text_color = components.Switch(components.Selector(
+            [components.RGB(), components.RGB()]
+        ),**config.get("text_color", {}))
         self.shape = components.Switch(
             components.Selector(
                 [components.ElasticDistortion(), components.ElasticDistortion()]
@@ -80,20 +90,36 @@ class SynthWhole(templates.Template):
             ),
             **config.get("style", {}),
         )
-        self.transform = components.Switch(
-            components.Selector(
-                [
-                    components.Perspective(),
-                    components.Perspective(),
-                    # components.Trapezoidate(),
-                    # components.Trapezoidate(),
-                    components.Skew(),
-                    components.Skew(),
-                    components.Rotate(),
-                ]
-            ),
+        # self.transform = components.Switch(
+        #     components.Selector(
+        #         [
+        #             components.Perspective(),
+        #             components.Perspective(),
+        #             components.Trapezoidate(),
+        #             components.Trapezoidate(),
+        #             components.Skew(),
+        #             components.Skew(),
+        #             components.Rotate(),
+        #         ]
+        #     ),
+        #     **config.get("transform", {}),
+        # )
+        self.transform = components.Iterator(
+            [
+                components.Switch(components.Rotate()),
+                components.Switch(components.Perspective()),
+                components.Switch(components.Trapezoidate()),
+                components.Switch(components.Skew()),
+                # components.Switch(components.Perspective()),
+            ],
             **config.get("transform", {}),
         )
+        self.size_transform = components.Switch(components.Selector(
+            [components.Perspective(),
+             components.Perspective(),
+             components.Perspective(),
+             components.Perspective()]
+             ),**config.get("size_transform", {}))
         self.fit = components.Fit()
         self.pad = components.Switch(components.Pad(), **config.get("pad", {}))
         self.postprocess = components.Iterator(
@@ -124,7 +150,7 @@ class SynthWhole(templates.Template):
         #     bg_image = _blend_images(mg_image, bg_image, self.visibility_check)
 
         # text_layer = self.paste_text(fg_image[..., :3], fg_image[..., 3])
-        front_layer, mg_layer, bboxes, label = self.generate_front_layer(fg_color, fg_style, mg_color, mg_style, max_sample=20)
+        front_layer, mg_layer, bboxes, label = self.generate_front_layer(fg_color, fg_style, mg_color, mg_style, max_sample=52)
         bg_image = _blend_images(mg_layer, bg_image, False)
 
         image = _blend_images(front_layer, bg_image, self.visibility_check)
@@ -208,15 +234,23 @@ class SynthWhole(templates.Template):
             self.glyph_coords_file.close()
 
     def _generate_color(self):
+        fg_c = self.text_color.sample()
+        bg_c = self.background_color.sample()
         mg_color = self.color.sample()
         fg_style = self.style.sample()
         mg_style = self.style.sample()
 
+        if fg_c['state']:
+            fg_color = fg_c['meta']['meta']
+            bg_color = bg_c
+        else:
+            fg_color, bg_color = self.colormap2.sample()
+
         if fg_style["state"]:
             fg_color, bg_color, style_color = self.colormap3.sample()
             fg_style["meta"]["meta"]["rgb"] = style_color["rgb"]
-        else:
-            fg_color, bg_color = self.colormap2.sample()
+        # else:
+        #     fg_color, bg_color = self.colormap2.sample()
 
         return fg_color, fg_style, mg_color, mg_style, bg_color
 
@@ -227,9 +261,16 @@ class SynthWhole(templates.Template):
         chars = utils.split_text(label, reorder=True)
 
         text = "".join(chars)
-        font = self.font.sample({"text": text, "vertical": self.vertical})
-
-        char_layers = [layers.TextLayer(char, **font) for char in chars]
+        # font = self.font.sample({"text": text, "vertical": self.vertical})
+        font = self.font.sample({"text": text, "vertical": False})
+        path = font['path']
+        size = font['size']
+        bold = font['bold']
+        vertical = font['vertical']
+        
+        char_layers = [
+            layers.TextLayer(char, path=path, size=int(size*0.75), bold=bold, vertical=vertical) if char in ['[', '{', ']', '}'] else
+            layers.TextLayer(char, path=path, size=size, bold=bold, vertical=vertical) for char in chars]
         self.shape.apply(char_layers)
         self.layout.apply(char_layers, {"meta": {"vertical": self.vertical}})
         char_glyph_layers = [char_layer.copy() for char_layer in char_layers]
@@ -243,6 +284,10 @@ class SynthWhole(templates.Template):
         self.style.apply([text_layer, *char_layers], style)
         self.transform.apply(
             [text_layer, text_glyph_layer, *char_layers, *char_glyph_layers], transform
+        )
+        transform2 = self.size_transform.sample()
+        self.size_transform.apply(
+            [text_layer, text_glyph_layer, *char_layers, *char_glyph_layers], transform2
         )
         self.fit.apply([text_layer, text_glyph_layer, *char_layers, *char_glyph_layers])
         self.pad.apply([text_layer])
@@ -262,7 +307,7 @@ class SynthWhole(templates.Template):
 
     def _generate_background(self, size, color):
         layer = layers.RectLayer(size)
-        # self.color.apply([layer], color)
+        self.color.apply([layer], color)
         self.texture.apply([layer])
         out = layer.output()
         return out
@@ -282,7 +327,7 @@ class SynthWhole(templates.Template):
         outs = [image_layer.output() for image_layer in image_layers]
         return outs
     
-    def generate_front_layer(self, fg_color, fg_style, mg_color, mg_style, max_sample=3):
+    def generate_front_layer(self, fg_color, fg_style, mg_color, mg_style, max_sample=5):
         layer = utils.create_image(self.image_dim)
         layer_mg = utils.create_image(self.image_dim)
 
@@ -295,14 +340,15 @@ class SynthWhole(templates.Template):
                 fg_color, fg_style
             )
 
-            coord = self.paste_text(fg_image, layer, bboxes, text_bboxes, max_try=5)
+            coord = self.paste_text(fg_image, layer, bboxes, text_bboxes, max_try=10)
 
             if coord is not None:
-                if True:
+                midground = np.random.rand() < self.midground
+                if midground:
                     mg_image, _, _, _, _ = self._generate_text(mg_color, mg_style)
                     mg_image = self._erase_image(mg_image, fg_image)
-                # bg_image = _blend_images(mg_image, bg_image, self.visibility_check)
-                self.paste_text(mg_image, layer_mg, bboxes, [], start_x=coord[0], start_y=coord[1])
+                    # bg_image = _blend_images(mg_image, bg_image, self.visibility_check)
+                    self.paste_text(mg_image, layer_mg, bboxes, [], start_x=coord[0], start_y=coord[1])
                 for label, bbox in zip(label, bboxes):
                     text_bboxes.append([coord[0]+bbox[0], coord[1]+bbox[1], bbox[2], bbox[3]])
                     labels.append(label)

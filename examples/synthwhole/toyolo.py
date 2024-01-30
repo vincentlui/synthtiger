@@ -19,6 +19,7 @@ GT2LABEL = {
     '8': 7,
     '9': 8,
     '0': 0,
+    '=': 0,
     'q': 16,
     'w': 13,
     'e': 14,
@@ -26,11 +27,30 @@ GT2LABEL = {
     'a': 10,
     's': 12,
     'd': 11,
+    'J': 10,
+    'Q': 12,
+    'K': 11,
+    'A': 9,
+    '♠': 16,
+    '♥': 15,
+    '♣': 13,
+    '♦': 14,
+    '[': 14,
+    ']': 13,
+    '{': 15,
+    '}': 16,
 }
 IMAGE_DIM = [640, 640]
 
-def save_files(key, filename, in_img_dir, out_img_dir, out_label_dir, image_dict, gt_dict, bbox_dict):
-    shutil.copy2(os.path.join(in_img_dir,image_dict[key]), os.path.join(out_img_dir, filename+'.jpg'))
+def save_files(key, filename, in_img_dir, out_img_dir, out_label_dir, image_dict, gt_dict, bbox_dict, to_gray=False):
+    input_image_fn = os.path.join(in_img_dir,image_dict[key])
+    if to_gray:
+        img = cv2.imread(input_image_fn)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        cv2.imwrite(os.path.join(out_img_dir, filename+'.jpg'), img)
+    else:
+        shutil.copy2(os.path.join(in_img_dir,image_dict[key]), os.path.join(out_img_dir, filename+'.jpg'))
+
     label_filename = os.path.join(out_label_dir, filename+'.txt')
     with open(label_filename, 'w') as f:
         gts = gt_dict[key]
@@ -61,6 +81,13 @@ def parse_args():
         metavar="DIR",
         type=str,
         help="Prefix of filename.",
+    )
+    parser.add_argument(
+        "-g",
+        "--gray",
+        metavar="DIR",
+        type=bool,
+        help="to gray image",
     )
     args = parser.parse_args()
 
@@ -128,8 +155,8 @@ if __name__ == '__main__':
         prefix = args.prefix
         data_dir = args.data_dir
         for key in train_keys:
-            save_files(key, prefix+str(key), data_dir, train_image_dir, train_label_dir, image_dict, gt_dict, bbox_dict)
+            save_files(key, prefix+str(key), data_dir, train_image_dir, train_label_dir, image_dict, gt_dict, bbox_dict,to_gray=args.gray)
         for key in val_keys:
-            save_files(key, prefix+str(key), data_dir, val_image_dir, val_label_dir, image_dict, gt_dict, bbox_dict)
+            save_files(key, prefix+str(key), data_dir, val_image_dir, val_label_dir, image_dict, gt_dict, bbox_dict,to_gray=args.gray)
         for key in test_keys:
-            save_files(key, prefix+str(key), data_dir, test_image_dir, test_label_dir, image_dict, gt_dict, bbox_dict)
+            save_files(key, prefix+str(key), data_dir, test_image_dir, test_label_dir, image_dict, gt_dict, bbox_dict,to_gray=args.gray)
