@@ -8,22 +8,23 @@ import numpy as np
 
 from synthtiger import utils
 from synthtiger.components.component import Component
+import albumentations as A
 
 
 class Crop(Component):
-    def __init__(self, pxs=None, percents=None, aligns=((-1, 1), (-1, 1))):
+    def __init__(self, pxs=None, percents=None, direction='right'):
         super().__init__()
         self.pxs = pxs
         self.percents = percents
-        self.aligns = aligns
+        self.direction = direction
 
         shapes = [(1, 2), (2, 2)]
         if self.pxs is not None and np.array(self.pxs).shape not in shapes:
             raise TypeError("Shape of pxs must be (1,2) or (2,2)")
         if self.percents is not None and np.array(self.percents).shape not in shapes:
             raise TypeError("Shape of percents must be (1,2) or (2,2)")
-        if np.array(self.aligns).shape not in shapes:
-            raise TypeError("Shape of aligns must be (1,2) or (2,2)")
+        if not direction in ['left', 'right']:
+            raise TypeError("Direction must be 'left' or 'right'")
 
     def sample(self, meta=None):
         if meta is None:
@@ -43,15 +44,10 @@ class Crop(Component):
             if self.percents is not None
             else None,
         )
-        aligns = meta.get(
-            "aligns",
-            tuple(np.random.uniform(align[0], align[1]) for align in self.aligns),
-        )
 
         meta = {
             "pxs": pxs,
             "percents": percents,
-            "aligns": aligns,
         }
 
         return meta
@@ -60,16 +56,11 @@ class Crop(Component):
         meta = self.sample(meta)
         pxs = meta["pxs"]
         percents = meta["percents"]
-        aligns = meta["aligns"]
 
         if pxs is not None:
             pxs = np.tile(pxs, 2)[:2]
         if percents is not None:
             percents = np.tile(percents, 2)[:2]
-
-        aligns = np.tile(aligns, 2)[:2]
-        aligns = np.clip(aligns, -1, 1)
-        aligns = (aligns + 1) / 2
 
         for layer in layers:
             image = layer.output()
@@ -81,19 +72,30 @@ class Crop(Component):
             elif percents is not None:
                 crops = percents * (width, height)
 
-            crops = np.amin((crops, (width - 1, height - 1)), axis=0)
-            crops = np.amax((crops, (0, 0)), axis=0)
-            left, top = crops * aligns
-            left, top = round(left), round(top)
-            right, bottom = width - left, height - top
+            if self.direction == 'right':
+                crops = np.amin((crops, (width - 1, height - 1)), axis=0)
+                crops = np.amax((crops, (0, 0)), axis=0)
+                right, bottom = crops 
+                right, bottom = round(right), round(bottom)
 
-            image = utils.crop_image(
-                image, top=top, right=right, bottom=bottom, left=left
-            )
+                image = utils.crop_image(
+                    image, top=0, right=right, bottom=bottom, left=0
+                )
+                topleft = layer.topleft 
+            else:
+                crops = (width, height) - crops
+                crops = np.amin((crops, (width - 1, height - 1)), axis=0)
+                crops = np.amax((crops, (0, 0)), axis=0)
+                left, top = crops 
+                left, top = round(left), round(top)
 
-            topleft = layer.topleft + (left, top)
+                image = utils.crop_image(
+                    image, top=top, right=width, bottom=height, left=left
+                )
+                topleft = [top, left]
+
+            topleft = layer.topleft 
             height, width = image.shape[:2]
-
             layer.image = image
             layer.bbox = [*topleft, width, height]
 

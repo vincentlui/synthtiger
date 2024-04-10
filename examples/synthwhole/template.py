@@ -50,11 +50,11 @@ class SynthWhole(templates.Template):
             [
                 components.LengthAugmentableCorpus(),
                 # components.CharAugmentableCorpus(),
-                components.LengthAugmentableCorpus(),
-                components.LengthAugmentableCorpus(),
-                components.LengthAugmentableCorpus(),
-                components.LengthAugmentableCorpus(),
-                components.LengthAugmentableCorpus(),
+                # components.LengthAugmentableCorpus(),
+                # components.LengthAugmentableCorpus(),
+                # components.LengthAugmentableCorpus(),
+                # components.LengthAugmentableCorpus(),
+                # components.LengthAugmentableCorpus(),
             ],
             **config.get("corpus", {}),
         )
@@ -90,36 +90,22 @@ class SynthWhole(templates.Template):
             ),
             **config.get("style", {}),
         )
-        # self.transform = components.Switch(
-        #     components.Selector(
-        #         [
-        #             components.Perspective(),
-        #             components.Perspective(),
-        #             components.Trapezoidate(),
-        #             components.Trapezoidate(),
-        #             components.Skew(),
-        #             components.Skew(),
-        #             components.Rotate(),
-        #         ]
-        #     ),
-        #     **config.get("transform", {}),
-        # )
+
+        self.char_transform = components.Switch(components.Crop(),
+            **config.get("char_transform", {}))
+
         self.transform = components.Iterator(
             [
-                components.Switch(components.Rotate()),
                 components.Switch(components.Perspective()),
+                components.Switch(components.Perspective()),
+                components.Switch(components.Rotate()),
                 components.Switch(components.Trapezoidate()),
+                components.Switch(components.Skew()),
                 components.Switch(components.Skew()),
                 # components.Switch(components.Perspective()),
             ],
             **config.get("transform", {}),
         )
-        self.size_transform = components.Switch(components.Selector(
-            [components.Perspective(),
-             components.Perspective(),
-             components.Perspective(),
-             components.Perspective()]
-             ),**config.get("size_transform", {}))
         self.fit = components.Fit()
         self.pad = components.Switch(components.Pad(), **config.get("pad", {}))
         self.postprocess = components.Iterator(
@@ -134,12 +120,12 @@ class SynthWhole(templates.Template):
 
     def generate(self):
         quality = np.random.randint(self.quality[0], self.quality[1] + 1)
-        midground = np.random.rand() < self.midground
+        # midground = np.random.rand() < self.midground
         fg_color, fg_style, mg_color, mg_style, bg_color = self._generate_color()
 
-        fg_image, label, bboxes, glyph_fg_image, glyph_bboxes = self._generate_text(
-            fg_color, fg_style
-        )
+        # fg_image, label, bboxes, glyph_fg_image, glyph_bboxes = self._generate_text(
+        #     fg_color, fg_style
+        # )
         bg_image = self._generate_background(self.image_dim, bg_color)
         # bg_image = self._generate_background(fg_image.shape[:2][::-1], bg_color)
 
@@ -154,9 +140,9 @@ class SynthWhole(templates.Template):
         bg_image = _blend_images(mg_layer, bg_image, False)
 
         image = _blend_images(front_layer, bg_image, self.visibility_check)
-        image, fg_image, glyph_fg_image = self._postprocess_images(
-            [image, fg_image, glyph_fg_image]
-        )
+        image = self._postprocess_images(
+            [image]
+        )[0]
 
         data = {
             "image": image,
@@ -164,8 +150,8 @@ class SynthWhole(templates.Template):
             "quality": quality,
             "mask": front_layer[..., 3],
             "bboxes": bboxes,
-            "glyph_mask": glyph_fg_image[..., 3],
-            "glyph_bboxes": glyph_bboxes,
+            # "glyph_mask": glyph_fg_image[..., 3],
+            # "glyph_bboxes": glyph_bboxes,
         }
 
         return data
@@ -189,42 +175,42 @@ class SynthWhole(templates.Template):
         quality = data["quality"]
         mask = data["mask"]
         bboxes = data["bboxes"]
-        glyph_mask = data["glyph_mask"]
-        glyph_bboxes = data["glyph_bboxes"]
+        # glyph_mask = data["glyph_mask"]
+        # glyph_bboxes = data["glyph_bboxes"]
 
         image = Image.fromarray(image[..., :3].astype(np.uint8))
         mask = Image.fromarray(mask.astype(np.uint8))
-        glyph_mask = Image.fromarray(glyph_mask.astype(np.uint8))
+        # glyph_mask = Image.fromarray(glyph_mask.astype(np.uint8))
 
         coords = [[x, y, x + w, y + h] for x, y, w, h in bboxes]
         coords = "\t".join([",".join(map(str, map(int, coord))) for coord in coords])
-        glyph_coords = [[x, y, x + w, y + h] for x, y, w, h in glyph_bboxes]
-        glyph_coords = "\t".join(
-            [",".join(map(str, map(int, coord))) for coord in glyph_coords]
-        )
+        # glyph_coords = [[x, y, x + w, y + h] for x, y, w, h in glyph_bboxes]
+        # glyph_coords = "\t".join(
+        #     [",".join(map(str, map(int, coord))) for coord in glyph_coords]
+        # )
 
         shard = str(idx // 10000)
         image_key = os.path.join("images", shard, f"{idx}.jpg")
         mask_key = os.path.join("masks", shard, f"{idx}.png")
-        glyph_mask_key = os.path.join("glyph_masks", shard, f"{idx}.png")
+        # glyph_mask_key = os.path.join("glyph_masks", shard, f"{idx}.png")
         image_path = os.path.join(root, image_key)
         mask_path = os.path.join(root, mask_key)
-        glyph_mask_path = os.path.join(root, glyph_mask_key)
+        # glyph_mask_path = os.path.join(root, glyph_mask_key)
 
         os.makedirs(os.path.dirname(image_path), exist_ok=True)
         image.save(image_path, quality=quality)
         if self.mask_output:
             os.makedirs(os.path.dirname(mask_path), exist_ok=True)
             mask.save(mask_path)
-        if self.glyph_mask_output:
-            os.makedirs(os.path.dirname(glyph_mask_path), exist_ok=True)
-            glyph_mask.save(glyph_mask_path)
+        # if self.glyph_mask_output:
+        #     os.makedirs(os.path.dirname(glyph_mask_path), exist_ok=True)
+        #     glyph_mask.save(glyph_mask_path)
 
         self.gt_file.write(f"{image_key}\t" + "\t".join(label)+"\n")
         if self.coord_output:
             self.coords_file.write(f"{image_key}\t{coords}\n")
-        if self.glyph_coord_output:
-            self.glyph_coords_file.write(f"{image_key}\t{glyph_coords}\n")
+        # if self.glyph_coord_output:
+        #     self.glyph_coords_file.write(f"{image_key}\t{glyph_coords}\n")
 
     def end_save(self, root):
         self.gt_file.close()
@@ -262,15 +248,36 @@ class SynthWhole(templates.Template):
 
         text = "".join(chars)
         # font = self.font.sample({"text": text, "vertical": self.vertical})
-        font = self.font.sample({"text": text, "vertical": False})
+        # font = self.font.sample({"text": text, "vertical": False})
+        font = self.font.sample({"vertical": False})
         path = font['path']
         size = font['size']
         bold = font['bold']
         vertical = font['vertical']
-        
-        char_layers = [
-            layers.TextLayer(char, path=path, size=int(size*0.75), bold=bold, vertical=vertical) if char in ['[', '{', ']', '}'] else
-            layers.TextLayer(char, path=path, size=size, bold=bold, vertical=vertical) for char in chars]
+
+        char_layers = []
+        for char in chars:
+            font = self.font.sample({"text": char, "vertical": False})
+            path = font['path']
+            bold = font['bold']
+            path2 = path
+            size2 = size
+            if char in ['{', '}', ']']:
+                size2=int(size*(0.15*np.random.rand() + 0.55))
+            if char == '[': # diamond
+                size2=int(size*(0.15*np.random.rand() + 0.7))
+            if char in ['♠', '♥', '♣', '♦']:
+                size2=int(size*(0.1*np.random.rand() + 0.9))
+            if char in ['[', '{', ']', '}','=']:
+                path2='resources/font2/cardc.ttf'
+            if char in ['a','s','d','0']:
+                path2='resources/font2/hoyle10.ttf'
+            char_layer = layers.TextLayer(char, path=path2, size=size2, bold=bold, vertical=vertical)
+            char_layers.append(char_layer)
+
+            char_transform = self.char_transform.sample()
+            self.char_transform.apply([char_layer], char_transform)
+            
         self.shape.apply(char_layers)
         self.layout.apply(char_layers, {"meta": {"vertical": self.vertical}})
         char_glyph_layers = [char_layer.copy() for char_layer in char_layers]
@@ -285,10 +292,10 @@ class SynthWhole(templates.Template):
         self.transform.apply(
             [text_layer, text_glyph_layer, *char_layers, *char_glyph_layers], transform
         )
-        transform2 = self.size_transform.sample()
-        self.size_transform.apply(
-            [text_layer, text_glyph_layer, *char_layers, *char_glyph_layers], transform2
-        )
+        # transform2 = self.size_transform.sample()
+        # self.size_transform.apply(
+        #     [text_layer, text_glyph_layer, *char_layers, *char_glyph_layers], transform2
+        # )
         self.fit.apply([text_layer, text_glyph_layer, *char_layers, *char_glyph_layers])
         self.pad.apply([text_layer])
 
@@ -327,7 +334,7 @@ class SynthWhole(templates.Template):
         outs = [image_layer.output() for image_layer in image_layers]
         return outs
     
-    def generate_front_layer(self, fg_color, fg_style, mg_color, mg_style, max_sample=5):
+    def generate_front_layer(self, fg_color, fg_style, mg_color, mg_style, max_sample=5, max_try=3):
         layer = utils.create_image(self.image_dim)
         layer_mg = utils.create_image(self.image_dim)
 
@@ -335,24 +342,30 @@ class SynthWhole(templates.Template):
         labels = []
 
         for _ in range(max_sample):
+            num_try = 0
+            success = False
+            while not success and (num_try < max_try):
+                fg_image, label, bboxes, glyph_fg_image, glyph_bboxes = self._generate_text(
+                    fg_color, fg_style
+                )
 
-            fg_image, label, bboxes, glyph_fg_image, glyph_bboxes = self._generate_text(
-                fg_color, fg_style
-            )
+                coord = self.paste_text(fg_image, layer, bboxes, text_bboxes, max_try=max_try)
 
-            coord = self.paste_text(fg_image, layer, bboxes, text_bboxes, max_try=10)
+                if coord is not None:
+                    midground = np.random.rand() < self.midground
+                    if midground:
+                        mg_image, _, _, _, _ = self._generate_text(mg_color, mg_style)
+                        mg_image = self._erase_image(mg_image, fg_image)
+                        # bg_image = _blend_images(mg_image, bg_image, self.visibility_check)
+                        self.paste_text(mg_image, layer_mg, bboxes, [], start_x=coord[0], start_y=coord[1])
+                    for label, bbox in zip(label, bboxes):
+                        text_bboxes.append([coord[0]+bbox[0], coord[1]+bbox[1], bbox[2], bbox[3]])
+                        labels.append(label)
+                    success = True
 
-            if coord is not None:
-                midground = np.random.rand() < self.midground
-                if midground:
-                    mg_image, _, _, _, _ = self._generate_text(mg_color, mg_style)
-                    mg_image = self._erase_image(mg_image, fg_image)
-                    # bg_image = _blend_images(mg_image, bg_image, self.visibility_check)
-                    self.paste_text(mg_image, layer_mg, bboxes, [], start_x=coord[0], start_y=coord[1])
-                for label, bbox in zip(label, bboxes):
-                    text_bboxes.append([coord[0]+bbox[0], coord[1]+bbox[1], bbox[2], bbox[3]])
-                    labels.append(label)
-            else:
+                num_try += 1
+            
+            if not success:
                 break
 
         return layer, layer_mg, text_bboxes, labels

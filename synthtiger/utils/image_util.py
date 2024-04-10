@@ -169,7 +169,7 @@ def fit_image(image, top=True, right=True, bottom=True, left=True):
 def crop_image(image, top=0, right=0, bottom=0, left=0):
     height, width = image.shape[:2]
     top, right, bottom, left = max(top, 0), max(right, 0), max(bottom, 0), max(left, 0)
-    image = np.array(image)[top : height - bottom, left : width - right, :]
+    image = np.array(image)[top : bottom, left : right, :]
     return image
 
 

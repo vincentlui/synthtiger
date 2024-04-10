@@ -9,7 +9,6 @@ import shutil
 import argparse
 
 GT2LABEL = {
-    '1': 9,
     '2': 1,
     '3': 2,
     '4': 3,
@@ -27,6 +26,7 @@ GT2LABEL = {
     'a': 10,
     's': 12,
     'd': 11,
+    'f': 9,
     'J': 10,
     'Q': 12,
     'K': 11,
@@ -39,8 +39,15 @@ GT2LABEL = {
     ']': 13,
     '{': 15,
     '}': 16,
+    '1': 17,
+    'B': 18,
+    'D': 19,
+    'E': 20,
+    'H': 21,
+    'R': 22,
+    'V': 23
 }
-IMAGE_DIM = [640, 640]
+IMAGE_DIM = [None, None]
 
 def save_files(key, filename, in_img_dir, out_img_dir, out_label_dir, image_dict, gt_dict, bbox_dict, to_gray=False):
     input_image_fn = os.path.join(in_img_dir,image_dict[key])
@@ -58,6 +65,12 @@ def save_files(key, filename, in_img_dir, out_img_dir, out_label_dir, image_dict
         for gt, bbox in zip(gts, bboxes):
             line = ' '.join(map(str,[gt] + list(bbox))) + '\n'
             f.write(line)
+
+def get_image_dim(img_path):
+    img = Image.open(img_path)
+    width, height = img.size
+    return width, height
+    
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -87,12 +100,13 @@ def parse_args():
         "--gray",
         metavar="DIR",
         type=bool,
+        default=False,
         help="to gray image",
     )
     args = parser.parse_args()
 
     # pprint.pprint(vars(args))
-
+    print(args)
     return args
 
 if __name__ == '__main__':
@@ -108,7 +122,10 @@ if __name__ == '__main__':
                 assert '\n' in line
                 split = line[:-1].split('\t')
                 image_key = split[0].split('/')[-1].split('.')[0]
-                labels = [GT2LABEL[x] for x in split[1:]]
+                if IMAGE_DIM[0] is None or IMAGE_DIM[1] is None:
+                    IMAGE_DIM = get_image_dim(os.path.join(args.data_dir, split[0]))
+                    print(f'Image dimension: {IMAGE_DIM}')
+                labels = np.array([GT2LABEL[x] for x in split[1:]])
                 gt_dict[image_key] = labels
                 image_dict[image_key] = split[0]
 
@@ -117,12 +134,20 @@ if __name__ == '__main__':
                 image_key2 = split2[0].split('/')[-1].split('.')[0]
                 bboxes = [list(map(int, x.split(','))) for x in split2[1:]]
                 bboxes = np.array(bboxes)
-                center_x = (bboxes[:,2] + bboxes[:,0])/IMAGE_DIM[1]/2
-                center_y = (bboxes[:,3] + bboxes[:,1])/IMAGE_DIM[0]/2
-                width = (bboxes[:,2] - bboxes[:,0])/IMAGE_DIM[1]
-                height = (bboxes[:,3] - bboxes[:,1])/IMAGE_DIM[0]
+                center_x = (bboxes[:,2] + bboxes[:,0])/IMAGE_DIM[0]/2
+                center_y = (bboxes[:,3] + bboxes[:,1])/IMAGE_DIM[1]/2
+                width = (bboxes[:,2] - bboxes[:,0])/IMAGE_DIM[0]
+                height = (bboxes[:,3] - bboxes[:,1])/IMAGE_DIM[1]
                 bboxes_new = np.vstack([center_x, center_y, width, height]).T
-                assert np.all(bboxes_new <= 1) and  np.all(bboxes_new >= 0)
+                if not np.all(bboxes_new <= 1) or not np.all(bboxes_new >= 0):
+                    mask = np.all(bboxes_new<=1,-1) & np.all(bboxes_new>=0, -1)
+                    bboxes_new = bboxes_new[mask]
+                    # remove the ground truth label
+                    gt_dict[image_key2] = gt_dict[image_key2][mask]
+                    print(f'removed {image_key2}')
+                assert np.all(bboxes_new <= 1) and  np.all(bboxes_new >= 0), line + image_key2
+                assert len(bboxes_new) == len(gt_dict[image_key2]), line + image_key2
+
                 bbox_dict[image_key2] = bboxes_new
 
         image_keys = set(gt_dict.keys()).union(set(bbox_dict.keys()))
@@ -131,8 +156,8 @@ if __name__ == '__main__':
 
         keys = gt_dict.keys()
         num_samples = len(keys)
-        num_train = int(.8 * num_samples)
-        num_val = int(.2 * num_samples)
+        num_train = int(.99 * num_samples)
+        num_val = int(.01 * num_samples)
         train_keys = list(gt_dict.keys())[:num_train]
         val_keys = list(gt_dict.keys())[num_train: num_train+num_val]
         test_keys = list(gt_dict.keys())[num_train+num_val:]
